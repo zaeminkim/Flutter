@@ -40,6 +40,22 @@ void main() {
 
   // Maps
   // key:value 구조
-  var player = {'name': 'lewis', 'xp': 10, 'superpower': false};
+  var player = {'name': 'lewis', 'xp': 19.99, 'superpower': false};
   // Map<int, bool> player = {1: true, 2: false, 3: true};
+
+  Map<List<int>, bool> mapList = {
+    [1, 2, 3, 4]: true,
+    [10, 11]: false,
+  };
+  List<Map<String, Object>> players = [
+    {'name': 'nico', 'xp': 213.1},
+    {'name': 'lando', 'xp': 89.3},
+  ];
+
+  // Sets
+  // List와 같지만 모든 item들은 서로 달라야 한다
+  var sets = {1, 2, 3, 4}; // Set<int> sets = {1,2,3,4,};
+  sets.add(1);
+  sets.add(1);
+  print(sets);
 }
