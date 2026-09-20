@@ -51,6 +51,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return duration.toString().split(".").first.substring(2, 7);
   }
 
+  void onResetPressed() {
+    timer.cancel();
+    setState(() {
+      totalSeconds = twentyFiveMinutes;
+      isRunning = false;
+    });
+  }
+
   // build 메소드로 UI를 렌더한다
   @override
   Widget build(BuildContext context) {
@@ -76,15 +84,26 @@ class _HomeScreenState extends State<HomeScreen> {
           Flexible(
             flex: 3,
             child: Center(
-              child: IconButton(
-                iconSize: 120,
-                color: Theme.of(context).cardColor,
-                onPressed: isRunning ? onPausePressed : onStartPressed,
-                icon: Icon(
-                  isRunning
-                      ? Icons.pause_circle_outline
-                      : Icons.play_circle_outline,
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    iconSize: 120,
+                    color: Theme.of(context).cardColor,
+                    onPressed: isRunning ? onPausePressed : onStartPressed,
+                    icon: Icon(
+                      isRunning
+                          ? Icons.pause_circle_outline
+                          : Icons.play_circle_outline,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.restore_sharp),
+                    onPressed: onResetPressed,
+                    iconSize: 120,
+                    color: Theme.of(context).cardColor,
+                  ),
+                ],
               ),
             ),
           ),
