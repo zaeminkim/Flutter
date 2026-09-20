@@ -4,8 +4,6 @@ void main() {
   runApp(const App());
 }
 
-// Stateful Widget = Widget + State
-// Widget: 모두 State를 가지고 있음
 class App extends StatefulWidget {
   const App({super.key});
 
@@ -13,15 +11,12 @@ class App extends StatefulWidget {
   State<App> createState() => _AppState();
 }
 
-// State: Widget의 데이터와 UI 저장함
 class _AppState extends State<App> {
-  int counter = 0; // final이 아님, 값을 변경할 수 있도록 함
+  bool showTitle = true;
 
-  void onClicked() {
-    // setState()는 State Class에게 데이터가 변경되었다고 알리는 함수
-    // 그리고 build 메소드를 한 번 더 호출함 (다시 렌더링)
+  void toggleTitle() {
     setState(() {
-      counter += 1;
+      showTitle = !showTitle;
     });
   }
 
@@ -30,22 +25,66 @@ class _AppState extends State<App> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // Theme 만들기
+      theme: ThemeData(
+        textTheme: TextTheme(titleLarge: TextStyle(color: Colors.red)),
+      ),
       home: Scaffold(
         backgroundColor: const Color(0xFFF4EDDB),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Click Count', style: TextStyle(fontSize: 30)),
-              Text('$counter', style: const TextStyle(fontSize: 30)),
+              showTitle
+                  ? MyLargeTitle()
+                  : Text("Nothing", style: TextStyle(fontSize: 30)),
               IconButton(
-                iconSize: 40,
-                onPressed: onClicked,
-                icon: Icon(Icons.add_box_rounded),
+                onPressed: toggleTitle,
+                icon: Icon(Icons.remove_red_eye),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class MyLargeTitle extends StatefulWidget {
+  const MyLargeTitle({super.key});
+
+  @override
+  State<MyLargeTitle> createState() => _MyLargeTitleState();
+}
+
+class _MyLargeTitleState extends State<MyLargeTitle> {
+  // initState 메소드
+  // 초기화, 항상 build 메소드보다 먼저 호출되어야 함
+  @override
+  void initState() {
+    super.initState();
+    print("initState");
+  }
+
+  // dispose 메소드
+  // 위젯이 스크린에서 제거될 때 호출됨
+  @override
+  void dispose() {
+    super.dispose();
+    print("dispose");
+  }
+
+  // build 메소드
+  @override
+  Widget build(BuildContext context) {
+    print("build");
+    // Text의 모든 부모 요소들에 대한 정보를 담고 있다
+    return Text(
+      'My Large Title',
+      style: TextStyle(
+        fontSize: 30,
+        color: Theme.of(context).textTheme.titleLarge?.color,
+        // Theme이라는 위젯이 제공한 ThemeData 객체 안의 textTheme 프로퍼티(값)가 가진 titleLarge 슬롯에 정의된 TextStyle 객체의 color 프로퍼티를 사용한다.
       ),
     );
   }
