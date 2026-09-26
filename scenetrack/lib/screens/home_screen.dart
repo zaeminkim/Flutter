@@ -44,7 +44,7 @@ class HomeScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   spacing: 2,
                   children: [
-                    Icon(Icons.bluetooth, size: 20),
+                    Icon(Icons.bluetooth, size: 20, color: Color(0xFF858995)),
                     Text("Connect Glasses"),
                   ],
                 ),
@@ -54,7 +54,7 @@ class HomeScreen extends StatelessWidget {
             GestureDetector(
               onTap: () {},
               child: Container(
-                width: 500,
+                width: double.infinity,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16.0),
                   color: Color(0xFFEADDFF),
@@ -65,7 +65,7 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       Icon(Icons.bluetooth_outlined, size: 50),
                       SizedBox(height: 16),
-                      Text("스마트 글래스를 연결해 주세요", style: TextStyle(fontSize: 16)),
+                      Text("스마트 글래스를 연결해 주세요.", style: TextStyle(fontSize: 16)),
                       Text(
                         "장면을 인식하고 어울리는 음악을 추천해 드려요.",
                         style: TextStyle(fontSize: 16),

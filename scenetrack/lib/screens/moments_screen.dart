@@ -5,6 +5,6 @@ class MomentsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(child: Text("Moments"));
+    return Center(child: CircularProgressIndicator());
   }
 }
