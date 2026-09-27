@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:scenetrack/screens/glass_connection_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -10,33 +11,74 @@ class SettingsScreen extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
         child: Column(
+          spacing: 16,
           children: [
-            Image.asset(
-              'assets/images/glasses_icon.png',
-              width: double.infinity,
-            ),
-            Text(
-              "스마트 글래스를 연결해 주세요.",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-            ),
-            Text(
-              "지금, 당신의 시선이 음악이 되는 경험을 시작합니다.",
-              style: TextStyle(fontSize: 16, color: Color(0xFF858995)),
-            ),
-            SizedBox(height: 80),
-            FilledButton(
-              onPressed: () {},
-              style: FilledButton.styleFrom(
-                backgroundColor: Color(0xFF7D8FEF),
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(vertical: 16, horizontal: 64),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16.0),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 8,
+                    offset: Offset(4, 4),
+                    color: Colors.black.withValues(alpha: 0.1),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 20,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Image.asset('assets/images/profile_icon.png', width: 45),
+                    Text("Profile", style: TextStyle(fontSize: 20)),
+                    Icon(Icons.chevron_right),
+                  ],
                 ),
               ),
-              child: Text(
-                "기기 연결하기",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+            ),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GlassConnectionScreen(),
+                  ),
+                );
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 4,
+                      offset: Offset(4, 4),
+                      color: Colors.black.withValues(alpha: 0.1),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 20,
+                    horizontal: 20,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Image.asset(
+                        'assets/images/glasses_icon.png',
+                        width: 50,
+                        color: Colors.black,
+                      ),
+                      Text("Ray-Ban Meta", style: TextStyle(fontSize: 20)),
+                      Icon(Icons.chevron_right),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
