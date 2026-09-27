@@ -1,7 +1,9 @@
 package com.example.scenetrack
 
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.scenetrack.dat.MetaDatChannels
 import com.example.scenetrack.dat.MetaDatController
@@ -9,8 +11,6 @@ import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.types.Permission
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 
 class MainActivity : FlutterFragmentActivity() {
 
@@ -26,7 +26,7 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-    private val cameraPermissionLauncher =
+    private val datCameraPermissionLauncher =
         registerForActivityResult(
             Wearables.RequestPermissionContract()
         ) { result ->
@@ -43,6 +43,23 @@ class MainActivity : FlutterFragmentActivity() {
                 }
         }
 
+    private val androidCameraPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            if (!::datController.isInitialized) {
+                return@registerForActivityResult
+            }
+
+            if (granted) {
+                datCameraPermissionLauncher.launch(Permission.CAMERA)
+            } else {
+                datController.reportError(
+                    "카메라 기능을 사용하려면 Android 카메라 권한이 필요합니다."
+                )
+            }
+        }
+
     override fun configureFlutterEngine(
         flutterEngine: FlutterEngine,
     ) {
@@ -56,11 +73,7 @@ class MainActivity : FlutterFragmentActivity() {
                     Manifest.permission.BLUETOOTH_CONNECT
                 )
             },
-            requestCameraPermission = {
-                cameraPermissionLauncher.launch(
-                    Permission.CAMERA
-                )
-            },
+            requestCameraPermission = ::requestCameraPermissions,
         )
 
         datChannels = MetaDatChannels(
@@ -77,5 +90,21 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         super.onDestroy()
+    }
+
+    private fun requestCameraPermissions() {
+        val hasAndroidCameraPermission =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA,
+            ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasAndroidCameraPermission) {
+            datCameraPermissionLauncher.launch(Permission.CAMERA)
+        } else {
+            androidCameraPermissionLauncher.launch(
+                Manifest.permission.CAMERA
+            )
+        }
     }
 }

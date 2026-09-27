@@ -17,6 +17,8 @@ class _GlassConnectionScreenState extends State<GlassConnectionScreen> {
 
   String _registrationState = "AVAILABLE";
   bool _hasActiveDevice = false;
+  bool _isRequestingCameraPermission = false;
+  bool? _hasCameraPermission;
   String? _errorMessage;
 
   bool get _isRegistering => _registrationState == 'REGISTERING';
@@ -56,6 +58,21 @@ class _GlassConnectionScreenState extends State<GlassConnectionScreen> {
           _hasActiveDevice = event['hasActiveDevice'] as bool? ?? false;
         });
 
+      case 'CAMERA_PERMISSION':
+        setState(() {
+          _isRequestingCameraPermission = false;
+          _hasCameraPermission = event['granted'] as bool? ?? false;
+          final isSnapshot = event['isSnapshot'] as bool? ?? false;
+          final message = event['message'] as String?;
+
+          _errorMessage =
+              message ??
+              (_hasCameraPermission == true || isSnapshot
+                  ? null
+                  : 'Meta AI에서 카메라 권한을 허용해 주세요.');
+        });
+        break;
+
       case 'error':
         setState(() {
           _errorMessage = event['message'] as String? ?? '연결 중 오류가 발생했습니다.';
@@ -79,6 +96,49 @@ class _GlassConnectionScreenState extends State<GlassConnectionScreen> {
     }
   }
 
+  Future<void> _requestCameraPermission() async {
+    setState(() {
+      _isRequestingCameraPermission = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _datService.requestCameraPermission();
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isRequestingCameraPermission = false;
+        _errorMessage = error.message ?? '카메라 권한을 요청하지 못했습니다.';
+      });
+    }
+  }
+
+  Future<void> _handleMainButton() async {
+    if (_registrationState != 'REGISTERED') {
+      await _connectGlasses();
+      return;
+    }
+
+    if (!_hasActiveDevice) {
+      setState(() {
+        _errorMessage =
+            'SceneTrack 등록은 완료되었습니다. '
+            '글래스가 켜져 있고 가까이 있는지 확인해 주세요.';
+      });
+      return;
+    }
+
+    if (_hasCameraPermission != true) {
+      await _requestCameraPermission();
+      return;
+    }
+
+    if (mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -95,39 +155,51 @@ class _GlassConnectionScreenState extends State<GlassConnectionScreen> {
           children: [
             SizedBox(height: 104),
             Image.asset(
-              'assets/images/glasses_icon.png',
+              _isConnected && _hasCameraPermission == true
+                  ? 'assets/images/check_icon.png'
+                  : 'assets/images/glasses_icon.png',
               width: double.infinity,
               height: 208,
             ),
             Text(
-              _isConnected
-                  ? '스마트 글래스가 연결되었어요.'
-                  : _isRegistering
-                  ? 'Meta AI에서 연결을 완료해 주세요.'
-                  : '스마트 글래스를 연결해 주세요.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+              !_isConnected
+                  ? '스마트 글래스를 연결해 주세요.'
+                  : _hasCameraPermission == null
+                  ? '연결 상태를 확인하고 있어요.'
+                  : _hasCameraPermission == false
+                  ? '카메라 권한을 허용해 주세요.'
+                  : '연결이 완료되었어요!',
+              style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700),
             ),
             SizedBox(height: 16),
             Text(
-              "지금, 당신의 시선이",
+              _isConnected && _hasCameraPermission == true
+                  ? "이제 바라보는 장면을 인식하고"
+                  : "지금, 당신의 시선이",
               style: TextStyle(fontSize: 18, color: Color(0xFF858995)),
             ),
             Text(
-              "음악이 되는 경험을 시작합니다.",
+              _isConnected && _hasCameraPermission == true
+                  ? "음악을 추천할 수 있어요."
+                  : "음악이 되는 경험을 시작합니다.",
               style: TextStyle(fontSize: 18, color: Color(0xFF858995)),
             ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
             SizedBox(height: 144),
             FilledButton(
-              onPressed: _isRegistering
+              onPressed:
+                  _isRegistering ||
+                      _isRequestingCameraPermission ||
+                      (_isConnected && _hasCameraPermission == null)
                   ? null
-                  : () {
-                      if (_isConnected) {
-                        Navigator.pop(context, true);
-                      } else {
-                        _connectGlasses();
-                      }
-                    },
+                  : _handleMainButton,
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF7D8FEF),
                 foregroundColor: Colors.white,
@@ -141,15 +213,15 @@ class _GlassConnectionScreenState extends State<GlassConnectionScreen> {
                 ),
               ),
               child: Text(
-                _isConnected
-                    ? '연결 완료'
-                    : _isRegistering
-                    ? '연결 중...'
-                    : '기기 연결하기',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
-                ),
+                !_isConnected
+                    ? (_isRegistering ? '연결 중...' : '기기 연결하기')
+                    : _hasCameraPermission == null
+                    ? '연결 상태 확인 중...'
+                    : _hasCameraPermission == false
+                    ? (_isRequestingCameraPermission
+                          ? '권한 승인 중...'
+                          : '카메라 허용하기')
+                    : '연결 완료',
               ),
             ),
           ],

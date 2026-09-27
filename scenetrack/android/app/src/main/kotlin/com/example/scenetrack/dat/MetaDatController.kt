@@ -7,7 +7,9 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
+import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
+import com.meta.wearable.dat.core.types.RegistrationState
 import io.flutter.plugin.common.EventChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -19,16 +21,20 @@ class MetaDatController(
     private val requestBluetoothPermission: () -> Unit,
     private val requestCameraPermission: () -> Unit,
 ) {
-    private val deviceSelector = AutoDeviceSelector()
+    private val deviceSelector by lazy { AutoDeviceSelector() }
 
     private var eventSink: EventChannel.EventSink? = null
     private var registrationJob: Job? = null
     private var deviceJob: Job? = null
     private var registrationErrorJob: Job? = null
+    private var isDatInitialized = false
 
     fun attachEventSink(sink: EventChannel.EventSink) {
         eventSink = sink
-        startMonitoring()
+
+        if (hasBluetoothPermission()) {
+            initializeDat { startMonitoring() }
+        }
     }
 
     fun detachEventSink() {
@@ -37,63 +43,77 @@ class MetaDatController(
     }
 
     fun startRegistration() {
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            ContextCompat.checkSelfPermission(
-                activity,
-                Manifest.permission.BLUETOOTH_CONNECT,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!hasBluetoothPermission()) {
             requestBluetoothPermission()
             return
         }
 
-        startRegistrationAfterAndroidPermission()
-    }
-
-    fun onBluetoothPermissionResult(granted: Boolean) {
-        if (granted) {
-            startRegistrationAfterAndroidPermission()
-        } else {
-            reportError("스마트 글래스 연결을 위해 Bluetooth 권한이 필요합니다.")
+        initializeDat {
+            startMonitoring()
+            startRegistrationIfNeeded()
         }
     }
 
-    private fun startRegistrationAfterAndroidPermission() {
-        try {
-            Wearables.startRegistration(activity)
-        } catch (error: Throwable) {
-            reportError(
-                error.message ?: "Meta AI 등록 화면을 열지 못했습니다.",
-            )
+    fun onBluetoothPermissionResult(granted: Boolean) {
+        if (!granted) {
+            reportError("스마트 글래스 연결을 위해 Bluetooth 권한이 필요합니다.")
+            return
+        }
+
+        initializeDat {
+            startMonitoring()
+            startRegistrationIfNeeded()
         }
     }
 
     fun startUnregistration() {
-        try {
-            Wearables.startUnregistration(activity)
-        } catch (error: Throwable) {
-            reportError(
-                error.message ?: "등록 해제를 시작하지 못했습니다.",
-            )
+        if (!hasBluetoothPermission()) {
+            reportError("스마트 글래스 연결을 해제하려면 Bluetooth 권한이 필요합니다.")
+            return
+        }
+
+        initializeDat {
+            try {
+                Wearables.startUnregistration(activity)
+            } catch (error: Throwable) {
+                reportError(error.message ?: "등록 해제를 시작하지 못했습니다.")
+            }
         }
     }
 
     fun requestDatCameraPermission() {
-        requestCameraPermission()
-    }
-
-    fun onCameraPermissionResult(status: PermissionStatus) {
-        val permissionState = when (status) {
-            PermissionStatus.Granted -> "GRANTED"
-            PermissionStatus.Denied -> "DENIED"
+        if (!isDatInitialized) {
+            reportError("먼저 스마트 글래스를 연결해 주세요.")
+            return
         }
 
+        scope.launch {
+            Wearables.checkPermissionStatus(Permission.CAMERA)
+                .onSuccess { status ->
+                    if (status == PermissionStatus.Granted) {
+                        onCameraPermissionResult(status)
+                    } else {
+                        requestCameraPermission()
+                    }
+                }
+                .onFailure { error, _ ->
+                    reportError("카메라 권한 상태 확인 실패: ${error.description}")
+                }
+        }
+    }
+
+    fun onCameraPermissionResult(
+        status: PermissionStatus,
+        isSnapshot: Boolean = false,
+        message: String? = null,
+    ) {
         sendEvent(
             mapOf(
                 "type" to "CAMERA_PERMISSION",
                 "granted" to (status == PermissionStatus.Granted),
-                "state" to permissionState,
+                "state" to if (status == PermissionStatus.Granted) "GRANTED" else "DENIED",
+                "isSnapshot" to isSnapshot,
+                "message" to message,
             ),
         )
     }
@@ -103,8 +123,71 @@ class MetaDatController(
             mapOf(
                 "type" to "error",
                 "message" to message,
-            )
+            ),
         )
+    }
+
+    fun dispose() {
+        stopMonitoring()
+        eventSink = null
+    }
+
+    private fun hasBluetoothPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.BLUETOOTH_CONNECT,
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun initializeDat(onReady: () -> Unit) {
+        if (isDatInitialized) {
+            onReady()
+            return
+        }
+
+        Wearables.initialize(activity.applicationContext)
+            .onSuccess {
+                isDatInitialized = true
+                onReady()
+            }
+            .onFailure { error, _ ->
+                reportError("Meta DAT 초기화 실패: ${error.description}")
+            }
+    }
+
+    private fun startRegistrationIfNeeded() {
+        when (Wearables.registrationState.value) {
+            RegistrationState.REGISTERED,
+            RegistrationState.REGISTERING -> Unit
+
+            else -> {
+                try {
+                    Wearables.startRegistration(activity)
+                } catch (error: Throwable) {
+                    reportError(error.message ?: "Meta AI 등록 화면을 열지 못했습니다.")
+                }
+            }
+        }
+    }
+
+    private fun refreshCameraPermissionStatus() {
+        scope.launch {
+            Wearables.checkPermissionStatus(Permission.CAMERA)
+                .onSuccess { status ->
+                    onCameraPermissionResult(
+                        status = status,
+                        isSnapshot = true,
+                    )
+                }
+                .onFailure { error, _ ->
+                    onCameraPermissionResult(
+                        status = PermissionStatus.Denied,
+                        isSnapshot = true,
+                        message = "카메라 권한 상태 확인 실패: ${error.description}",
+                    )
+                }
+        }
     }
 
     private fun startMonitoring() {
@@ -116,8 +199,12 @@ class MetaDatController(
                     mapOf(
                         "type" to "registration",
                         "state" to state.name,
-                    )
+                    ),
                 )
+
+                if (state == RegistrationState.REGISTERED) {
+                    refreshCameraPermissionStatus()
+                }
             }
         }
 
@@ -128,7 +215,7 @@ class MetaDatController(
                         "type" to "device",
                         "hasActiveDevice" to (device != null),
                         "deviceId" to device?.toString(),
-                    )
+                    ),
                 )
             }
         }
@@ -143,10 +230,8 @@ class MetaDatController(
     private fun stopMonitoring() {
         registrationJob?.cancel()
         registrationJob = null
-
         deviceJob?.cancel()
         deviceJob = null
-
         registrationErrorJob?.cancel()
         registrationErrorJob = null
     }
@@ -155,10 +240,5 @@ class MetaDatController(
         activity.runOnUiThread {
             eventSink?.success(event)
         }
-    }
-
-    fun dispose() {
-        stopMonitoring()
-        eventSink = null
     }
 }
