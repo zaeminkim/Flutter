@@ -184,14 +184,14 @@ class _GlassConnectionScreenState extends State<GlassConnectionScreen> {
                   : "음악이 되는 경험을 시작합니다.",
               style: TextStyle(fontSize: 18, color: Color(0xFF858995)),
             ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ],
+            // if (_errorMessage != null) ...[
+            //   const SizedBox(height: 16),
+            //   Text(
+            //     _errorMessage!,
+            //     textAlign: TextAlign.center,
+            //     style: const TextStyle(color: Colors.red),
+            //   ),
+            // ],
             SizedBox(height: 144),
             FilledButton(
               onPressed:
