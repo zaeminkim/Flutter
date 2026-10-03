@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.example.sync_app.dat.camera.FlutterCameraTexture
+import com.example.sync_app.dat.camera.YuvToBitmapConverter
 import com.meta.wearable.dat.camera.Camera
 import com.meta.wearable.dat.camera.addCamera
 import com.meta.wearable.dat.camera.types.PhotoData
@@ -20,16 +22,28 @@ import com.meta.wearable.dat.core.session.DeviceSessionState
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
+import com.meta.wearable.dat.inputs.Inputs
+import com.meta.wearable.dat.inputs.addInputs
+import com.meta.wearable.dat.inputs.removeInputs
+import com.meta.wearable.dat.inputs.types.CapturePressType
+import com.meta.wearable.dat.inputs.types.InputEvent
+import com.meta.wearable.dat.inputs.types.InputSource
+import com.meta.wearable.dat.inputs.types.InputsConfiguration
 import io.flutter.plugin.common.EventChannel
+import io.flutter.view.TextureRegistry
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MetaDatController(
     private val activity: FragmentActivity,
     private val scope: CoroutineScope,
+    private val textureRegistry: TextureRegistry,
     private val requestBluetoothPermission: () -> Unit,
     private val requestCameraPermission: () -> Unit,
 ) {
@@ -45,7 +59,13 @@ class MetaDatController(
     private var sessionErrorJob: Job? = null
     private var streamStateJob: Job? = null
     private var streamErrorJob: Job? = null
+    private var videoFrameJob: Job? = null
+    private var previewTexture: FlutterCameraTexture? = null
+    private var inputs: Inputs? = null
+    private var inputsEventJob: Job? = null
+    private var inputsErrorJob: Job? = null
     private var isAttachingCamera = false
+    private var isAttachingInputs = false
     private var isCapturing = false
     private var isDatInitialized = false
 
@@ -168,6 +188,7 @@ class MetaDatController(
 
                         if (state == DeviceSessionState.STARTED) {
                             attachCamera(createdSession)
+                            attachInputs(createdSession)
                         }
                     }
                 }
@@ -237,6 +258,12 @@ class MetaDatController(
     }
 
     fun stopCameraSession() {
+        inputsEventJob?.cancel()
+        inputsEventJob = null
+        inputsErrorJob?.cancel()
+        inputsErrorJob = null
+        videoFrameJob?.cancel()
+        videoFrameJob = null
         streamStateJob?.cancel()
         streamStateJob = null
         streamErrorJob?.cancel()
@@ -246,12 +273,23 @@ class MetaDatController(
         sessionErrorJob?.cancel()
         sessionErrorJob = null
 
+        val activeSession = cameraSession
+
+        if (inputs != null && activeSession != null) {
+            activeSession.removeInputs()
+        }
+        inputs = null
+
         camera?.stop()
         camera = null
-        cameraSession?.stop()
+        activeSession?.stop()
         cameraSession = null
 
+        previewTexture?.release()
+        previewTexture = null
+
         isAttachingCamera = false
+        isAttachingInputs = false
         isCapturing = false
     }
 
@@ -286,6 +324,7 @@ class MetaDatController(
         ).onSuccess { addedCamera ->
             camera = addedCamera
             isAttachingCamera = false
+            previewTexture = FlutterCameraTexture(textureRegistry)
 
             streamStateJob = scope.launch {
                 addedCamera.stream.state.collect { state ->
@@ -294,6 +333,9 @@ class MetaDatController(
                             "type" to "camera",
                             "state" to state.name,
                             "ready" to (state == StreamState.STREAMING),
+                            "textureId" to previewTexture?.textureId,
+                            "width" to 504,
+                            "height" to 896,
                         ),
                     )
                 }
@@ -305,6 +347,28 @@ class MetaDatController(
                 }
             }
 
+            videoFrameJob = scope.launch {
+                addedCamera.stream.videoStream
+                    .conflate()
+                    .collect { frame ->
+                        if (frame.isCompressed || frame.isCodecConfig) {
+                            return@collect
+                        }
+
+                        val bitmap = withContext(Dispatchers.Default) {
+                            YuvToBitmapConverter.convert(
+                                yuvData = frame.buffer,
+                                width = frame.width,
+                                height = frame.height,
+                            )
+                        }
+
+                        if (bitmap != null) {
+                            previewTexture?.render(bitmap)
+                        }
+                    }
+            }
+
             addedCamera.stream.start()
                 .onFailure { error, _ ->
                     reportError("카메라 스트림 시작 실패: ${error.description}")
@@ -312,6 +376,49 @@ class MetaDatController(
         }.onFailure { error, _ ->
             isAttachingCamera = false
             reportError("카메라 연결 실패: ${error.description}")
+        }
+    }
+
+    private fun attachInputs(activeSession: DeviceSession) {
+        if (inputs != null || isAttachingInputs) {
+            return
+        }
+
+        isAttachingInputs = true
+
+        activeSession.addInputs(
+            InputsConfiguration(
+                sources = setOf(InputSource.CAPTURE_BUTTON),
+                consumeBack = false,
+            ),
+        ).onSuccess { addedInputs ->
+            inputs = addedInputs
+            isAttachingInputs = false
+
+            inputsEventJob = scope.launch {
+                addedInputs.events.collect { event ->
+                    if (
+                        event is InputEvent.Capture &&
+                        event.source == InputSource.CAPTURE_BUTTON &&
+                        event.pressType == CapturePressType.SHORT_PRESS
+                    ) {
+                        capturePhoto(source = "glasses")
+                    }
+                }
+            }
+
+            inputsErrorJob = scope.launch {
+                addedInputs.errors.collect { error ->
+                    if (error != null) {
+                        reportError("스마트글래스 입력 오류: ${error.description}")
+                    }
+                }
+            }
+        }.onFailure { error, _ ->
+            isAttachingInputs = false
+            reportError(
+                "스마트글래스 카메라 버튼을 연결하지 못했습니다: ${error.description}",
+            )
         }
     }
 

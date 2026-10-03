@@ -68,6 +68,7 @@ class MainActivity : FlutterFragmentActivity() {
         datController = MetaDatController(
             activity = this,
             scope = lifecycleScope,
+            textureRegistry = flutterEngine.renderer,
             requestBluetoothPermission = {
                 bluetoothPermissionLauncher.launch(
                     Manifest.permission.BLUETOOTH_CONNECT

@@ -47,6 +47,7 @@ android {
 dependencies {
     implementation("com.meta.wearable:mwdat-core:1.0.0")
     implementation("com.meta.wearable:mwdat-camera:1.0.0")
+    implementation("com.meta.wearable:mwdat-inputs:1.0.0")
 
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.fragment:fragment-ktx:1.8.9")

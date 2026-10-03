@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sync_app/ui/screens/home_camera_screen.dart';
 
 // PageRouteBuilder: Animate a page route transition
 // Animation 객체를 제공하고, 이 객체는 Tween, Curve 객체와 함께 사용되어 애니메이션을 커스텀함
@@ -18,7 +17,8 @@ Route<T> buildCameraPageRoute<T>(Widget page) {
     reverseTransitionDuration: const Duration(milliseconds: 300),
     // 1-1. pageBuilder: route의 페이지를 빌드, 어떤 화면을 보여줄지
     pageBuilder: (context, animation, secondaryAnimation) =>
-        const HomeCameraScreen(),
+        // const HomeCameraScreen(),
+        page,
     // 1-2. transitionBuilder: route의 전환을 빌드, 그 화면이 어떻게 등장할지
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       // 2. Tween 만들기: Offset(0,1) -> Offset(0,0) = 전환 애니메이션 만들기

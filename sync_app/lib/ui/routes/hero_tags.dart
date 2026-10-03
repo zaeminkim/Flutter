@@ -1,0 +1,1 @@
+const cameraMediaHeroTag = 'camera-media';

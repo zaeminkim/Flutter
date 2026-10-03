@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sync_app/services/meta_dat_service.dart';
 import 'package:sync_app/ui/routes/camera_page_route.dart';
+import 'package:sync_app/ui/routes/select_image_page_route.dart';
 import 'package:sync_app/ui/screens/home_select_image_screen.dart';
+import 'package:sync_app/ui/widgets/camera_preview.dart';
+
+import 'package:sync_app/ui/routes/hero_tags.dart';
 
 class HomeCameraScreen extends StatefulWidget {
   const HomeCameraScreen({super.key});
@@ -22,6 +26,7 @@ class _HomeCameraScreenState extends State<HomeCameraScreen> {
   bool _isCapturing = false;
   bool _isOpeningCapturedImage = false;
   String? _errorMessage;
+  int? _textureId;
 
   @override
   void initState() {
@@ -51,8 +56,11 @@ class _HomeCameraScreenState extends State<HomeCameraScreen> {
 
     switch (event['type']) {
       case 'camera':
+        final rawTextureId = event['textureId'];
+
         setState(() {
           _isCameraReady = event['ready'] as bool? ?? false;
+          _textureId = rawTextureId is num ? rawTextureId.toInt() : null;
         });
         break;
 
@@ -111,8 +119,15 @@ class _HomeCameraScreenState extends State<HomeCameraScreen> {
 
     _isOpeningCapturedImage = true;
 
+    // PageRouteBuilder 애니메이션 적용
+    // Slide Transition
+    // await Navigator.of(context).push(
+    //   buildCameraPageRoute<void>(HomeSelectImageScreen(imagePath: imagePath)),
+    // );
+
+    // Fade Transition
     await Navigator.of(context).push(
-      buildCameraPageRoute<void>(HomeSelectImageScreen(imagePath: imagePath)),
+      buildPhotoPreviewRoute<void>(HomeSelectImageScreen(imagePath: imagePath)),
     );
 
     if (!mounted) return;
@@ -142,35 +157,12 @@ class _HomeCameraScreenState extends State<HomeCameraScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            const ColoredBox(color: Colors.black),
-            Center(
-              child: _isCameraReady
-                  ? const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.camera_alt_outlined,
-                          color: Colors.white,
-                          size: 36,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          '카메라가 준비되었어요.',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    )
-                  : const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(height: 16),
-                        Text(
-                          '스마트글래스 카메라 연결 중...',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
+            Hero(
+              tag: cameraMediaHeroTag,
+              child: CameraPreview(
+                textureId: _textureId,
+                isReady: _isCameraReady,
+              ),
             ),
             Positioned(
               top: 16,
