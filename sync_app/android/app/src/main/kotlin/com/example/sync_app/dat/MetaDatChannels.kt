@@ -46,6 +46,21 @@ class MetaDatChannels(
                 result.success(null)
             }
 
+            "startCameraSession" -> {
+                controller.startCameraSession()
+                result.success(null)
+            }
+
+            "capturePhoto" -> {
+                controller.capturePhoto(source = "app")
+                result.success(null)
+            }
+
+            "stopCameraSession" -> {
+                controller.stopCameraSession()
+                result.success(null)
+            }
+
             else -> result.notImplemented()
         }
     }

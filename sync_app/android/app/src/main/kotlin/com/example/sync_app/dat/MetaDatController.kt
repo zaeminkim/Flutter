@@ -1,16 +1,28 @@
 package com.example.sync_app.dat
 
 import android.Manifest
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.meta.wearable.dat.camera.Camera
+import com.meta.wearable.dat.camera.addCamera
+import com.meta.wearable.dat.camera.types.PhotoData
+import com.meta.wearable.dat.camera.types.StreamConfiguration
+import com.meta.wearable.dat.camera.types.StreamState
+import com.meta.wearable.dat.camera.types.VideoQuality
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
+import com.meta.wearable.dat.core.session.DeviceSession
+import com.meta.wearable.dat.core.session.DeviceSessionState
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
 import io.flutter.plugin.common.EventChannel
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -27,6 +39,14 @@ class MetaDatController(
     private var registrationJob: Job? = null
     private var deviceJob: Job? = null
     private var registrationErrorJob: Job? = null
+    private var cameraSession: DeviceSession? = null
+    private var camera: Camera? = null
+    private var sessionStateJob: Job? = null
+    private var sessionErrorJob: Job? = null
+    private var streamStateJob: Job? = null
+    private var streamErrorJob: Job? = null
+    private var isAttachingCamera = false
+    private var isCapturing = false
     private var isDatInitialized = false
 
     fun attachEventSink(sink: EventChannel.EventSink) {
@@ -118,6 +138,123 @@ class MetaDatController(
         )
     }
 
+    fun startCameraSession() {
+        if (!isDatInitialized) {
+            reportError("먼저 스마트글래스를 연결해 주세요.")
+            return
+        }
+
+        if (Wearables.registrationState.value != RegistrationState.REGISTERED) {
+            reportError("스마트글래스 등록이 완료되지 않았습니다.")
+            return
+        }
+
+        if (cameraSession != null) {
+            return
+        }
+
+        Wearables.createSession(deviceSelector)
+            .onSuccess { createdSession ->
+                cameraSession = createdSession
+
+                sessionStateJob = scope.launch {
+                    createdSession.state.collect { state ->
+                        sendEvent(
+                            mapOf(
+                                "type" to "cameraSession",
+                                "state" to state.name,
+                            ),
+                        )
+
+                        if (state == DeviceSessionState.STARTED) {
+                            attachCamera(createdSession)
+                        }
+                    }
+                }
+
+                sessionErrorJob = scope.launch {
+                    createdSession.errors.collect { error ->
+                        reportError("기기 세션 오류: ${error.description}")
+                    }
+                }
+
+                createdSession.start()
+            }
+            .onFailure { error, _ ->
+                reportError("기기 세션 생성 실패: ${error.description}")
+            }
+    }
+
+    fun capturePhoto(source: String = "app") {
+        if (isCapturing) {
+            return
+        }
+
+        val activeStream = camera?.stream
+
+        if (activeStream == null) {
+            reportError("카메라가 준비되지 않았습니다.")
+            return
+        }
+
+        if (activeStream.state.value != StreamState.STREAMING) {
+            reportError("카메라 스트리밍이 아직 준비되지 않았습니다.")
+            return
+        }
+
+        isCapturing = true
+        sendCaptureEvent(state = "CAPTURING", source = source)
+
+        scope.launch {
+            activeStream.capturePhoto()
+                .onSuccess { photoData ->
+                    try {
+                        val photoFile = savePhoto(photoData)
+                        sendCaptureEvent(
+                            state = "COMPLETED",
+                            source = source,
+                            path = photoFile.absolutePath,
+                        )
+                    } catch (error: Throwable) {
+                        sendCaptureEvent(
+                            state = "FAILED",
+                            source = source,
+                            message = error.message ?: "촬영한 사진을 저장하지 못했습니다.",
+                        )
+                    } finally {
+                        isCapturing = false
+                    }
+                }
+                .onFailure { error, _ ->
+                    isCapturing = false
+                    sendCaptureEvent(
+                        state = "FAILED",
+                        source = source,
+                        message = error.description,
+                    )
+                }
+        }
+    }
+
+    fun stopCameraSession() {
+        streamStateJob?.cancel()
+        streamStateJob = null
+        streamErrorJob?.cancel()
+        streamErrorJob = null
+        sessionStateJob?.cancel()
+        sessionStateJob = null
+        sessionErrorJob?.cancel()
+        sessionErrorJob = null
+
+        camera?.stop()
+        camera = null
+        cameraSession?.stop()
+        cameraSession = null
+
+        isAttachingCamera = false
+        isCapturing = false
+    }
+
     fun reportError(message: String) {
         sendEvent(
             mapOf(
@@ -128,8 +265,106 @@ class MetaDatController(
     }
 
     fun dispose() {
+        stopCameraSession()
         stopMonitoring()
         eventSink = null
+    }
+
+    private fun attachCamera(activeSession: DeviceSession) {
+        if (camera != null || isAttachingCamera) {
+            return
+        }
+
+        isAttachingCamera = true
+
+        activeSession.addCamera(
+            StreamConfiguration(
+                videoQuality = VideoQuality.MEDIUM,
+                frameRate = 15,
+                compressVideo = false,
+            ),
+        ).onSuccess { addedCamera ->
+            camera = addedCamera
+            isAttachingCamera = false
+
+            streamStateJob = scope.launch {
+                addedCamera.stream.state.collect { state ->
+                    sendEvent(
+                        mapOf(
+                            "type" to "camera",
+                            "state" to state.name,
+                            "ready" to (state == StreamState.STREAMING),
+                        ),
+                    )
+                }
+            }
+
+            streamErrorJob = scope.launch {
+                addedCamera.stream.errorStream.collect { error ->
+                    reportError("카메라 스트림 오류: ${error.description}")
+                }
+            }
+
+            addedCamera.stream.start()
+                .onFailure { error, _ ->
+                    reportError("카메라 스트림 시작 실패: ${error.description}")
+                }
+        }.onFailure { error, _ ->
+            isAttachingCamera = false
+            reportError("카메라 연결 실패: ${error.description}")
+        }
+    }
+
+    private fun savePhoto(photoData: PhotoData): File {
+        val bitmap = when (photoData) {
+            is PhotoData.Bitmap -> photoData.bitmap
+            is PhotoData.HEIC -> {
+                val buffer = photoData.data.duplicate()
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    ?: throw IllegalStateException("HEIC 사진을 변환하지 못했습니다.")
+            }
+        }
+
+        return saveBitmapAsJpeg(bitmap)
+    }
+
+    private fun saveBitmapAsJpeg(bitmap: Bitmap): File {
+        val photoDirectory = File(activity.cacheDir, "captured_photos").apply {
+            mkdirs()
+        }
+        val photoFile = File(
+            photoDirectory,
+            "sync_${System.currentTimeMillis()}.jpg",
+        )
+
+        FileOutputStream(photoFile).use { output ->
+            val saved = bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
+            if (!saved) {
+                throw IllegalStateException("사진 파일을 저장하지 못했습니다.")
+            }
+        }
+
+        return photoFile
+    }
+
+    private fun sendCaptureEvent(
+        state: String,
+        source: String,
+        path: String? = null,
+        message: String? = null,
+    ) {
+        sendEvent(
+            mapOf(
+                "type" to "capture",
+                "state" to state,
+                "source" to source,
+                "path" to path,
+                "message" to message,
+            ),
+        )
     }
 
     private fun hasBluetoothPermission(): Boolean {

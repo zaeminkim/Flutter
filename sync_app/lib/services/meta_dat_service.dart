@@ -34,4 +34,16 @@ class MetaDatService {
   Future<void> requestCameraPermission() {
     return _methodChannel.invokeMethod<void>('requestCameraPermission');
   }
+
+  Future<void> startCameraSession() {
+    return _methodChannel.invokeMethod<void>('startCameraSession');
+  }
+
+  Future<void> capturePhoto() {
+    return _methodChannel.invokeMethod<void>('capturePhoto');
+  }
+
+  Future<void> stopCameraSession() {
+    return _methodChannel.invokeMethod<void>('stopCameraSession');
+  }
 }

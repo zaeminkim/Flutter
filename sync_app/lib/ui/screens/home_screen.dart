@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ).push(buildCameraPageRoute(const HomeCameraScreen()));
   }
 
-  // _handlePrimaryAction: 버튼 클릭 함수
+  // _handlePrimaryAction: PrimaryButton 클릭 함수
   // Future: 결과가 나중에 완료됨, async/await: 비동기 함수
   Future<void> _handlePrimaryAction() async {
     setState(() {
@@ -186,7 +186,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildStepIndicator({required int number, required bool completed}) {
     if (completed) {
-      return const Icon(Icons.check_circle, size: 28, color: Color(0xFF6750A4));
+      return const Icon(
+        Icons.check_circle_sharp,
+        size: 28,
+        color: Color(0xFF6750A4),
+      );
     }
 
     return CircleAvatar(
