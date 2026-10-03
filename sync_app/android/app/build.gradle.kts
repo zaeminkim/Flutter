@@ -24,10 +24,15 @@ android {
         applicationId = "com.example.sync_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 31
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Meta AI Developer Mode test credentials.
+        // Replace these with Wearables Developer Center credentials for release.
+        manifestPlaceholders["mwdat_application_id"] = "0"
+        manifestPlaceholders["mwdat_client_token"] = "0"
     }
 
     buildTypes {
@@ -37,6 +42,15 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    implementation("com.meta.wearable:mwdat-core:1.0.0")
+    implementation("com.meta.wearable:mwdat-camera:1.0.0")
+
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
 }
 
 flutter {
