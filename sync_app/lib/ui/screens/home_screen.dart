@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sync_app/services/meta_dat_service.dart';
+import 'package:sync_app/ui/contents/home_playing_content.dart';
+import 'package:sync_app/ui/contents/home_playlist_content.dart';
 import 'package:sync_app/ui/screens/home_camera_screen.dart';
 // import 'package:sync_app/ui/widgets/primary_button.dart';
 
@@ -22,7 +24,13 @@ class HomeScreen extends StatefulWidget {
 
 // _HomeScreen class (State): 변하는 데이터와 실제 UI 관리
 class _HomeScreenState extends State<HomeScreen> {
+  // ignore: prefer_final_fields
   HomePhase _phase = HomePhase.setup;
+  void _showPlayingContent() {
+    setState(() {
+      _phase = HomePhase.playing;
+    });
+  }
 
   // DAT 서비스 객체: Flutter가 Android Native DAT 코드와 통신
   final MetaDatService _datService = MetaDatService.instance;
@@ -41,6 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isRequestingCameraPermission = false;
   // _errorMessage: 에러 메시지
   String? _errorMessage;
+
+  // 촬영한 이미지 경로를 저장하는 변수
+  String? _capturedImagePath;
 
   // _isRegistering: getter함수
   bool get _isRegistering => _registrationState == 'REGISTERING';
@@ -109,11 +120,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // HomeCameraScreen()으로 이동 -> PageRouteBuilder 사용
   Future<void> _openCameraScreen() async {
-    // AppShell에 별도의 내부 Navigator가 없기 때문에
-    // appBar와 bottomNavigationBar를 덮는 전체 화면 route가 열림
-    await Navigator.of(
-      context,
-    ).push(buildCameraPageRoute(const HomeCameraScreen()));
+    // imagePath<String>를 보내기
+    final imagePath =
+        // AppShell에 별도의 내부 Navigator가 없기 때문에
+        // appBar와 bottomNavigationBar를 덮는 전체 화면 route가 열림
+        await Navigator.of(
+          context,
+        ).push<String>(buildCameraPageRoute<String>(const HomeCameraScreen()));
+
+    if (!mounted || imagePath == null) return;
+
+    setState(() {
+      _capturedImagePath = imagePath;
+      _phase = HomePhase.playlist;
+    });
   }
 
   // _handlePrimaryAction: PrimaryButton 클릭 함수
@@ -189,6 +209,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return true;
   }
 
+  void _showPlaylistContent() {
+    setState(() {
+      _phase = HomePhase.playlist;
+    });
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -216,20 +242,27 @@ class _HomeScreenState extends State<HomeScreen> {
               : null,
           errorMessage: _errorMessage,
         );
-      case HomePhase.sceneLoading:
-        return const Center(child: Text('장면 분석 화면 준비 중'));
 
-      case HomePhase.songLoading:
-        return const Center(child: Text('음악 검색 화면 준비 중'));
-
-      case HomePhase.playlistLoading:
-        return const Center(child: Text('플레이리스트 준비 중'));
+      case HomePhase.playlist:
+        return HomePlaylistContent(
+          imagePath: _capturedImagePath!,
+          // 새 경로를 받아서 상태를 변경하는 _openCameraScreen()을 콜백함수에 전달함
+          onRetakePressed: () {
+            unawaited(_openCameraScreen());
+          },
+          onPlayPressed: _showPlayingContent,
+        );
 
       case HomePhase.playing:
-        return const Center(child: Text('재생 화면 준비 중'));
+        return HomePlayingContent(
+          isConnected: _isConnected,
+          imagePath: _capturedImagePath!,
 
-      case HomePhase.error:
-        return Center(child: Text(_errorMessage ?? '오류가 발생했습니다.'));
+          onRetakePressed: () {
+            unawaited(_openCameraScreen());
+          },
+          onRecommendAgainPressed: _showPlaylistContent,
+        );
     }
   }
 }

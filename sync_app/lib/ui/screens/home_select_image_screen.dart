@@ -19,20 +19,31 @@ class HomeSelectImageScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 24),
           children: [
+            SizedBox(height: 100),
             Hero(
               tag: cameraMediaHeroTag,
-              child: RotatedBox(
-                quarterTurns: 1,
-                child: Image.file(File(imagePath), fit: BoxFit.cover),
+              child: SizedBox(
+                child: ClipRRect(
+                  borderRadius: BorderRadiusGeometry.circular(12),
+                  child: RotatedBox(
+                    quarterTurns: 1,
+                    child: Image.file(File(imagePath), fit: BoxFit.cover),
+                  ),
+                ),
               ),
             ),
-            SizedBox(height: 30),
+            SizedBox(height: 100),
             Container(
               decoration: BoxDecoration(color: Colors.white),
               child: Column(
                 spacing: 8,
                 children: [
-                  PrimaryButton(label: "이 장면 분석하기", onPressed: () {}),
+                  PrimaryButton(
+                    label: "이 장면 분석하기",
+                    onPressed: () {
+                      Navigator.of(context).pop<String>(imagePath);
+                    },
+                  ),
                   SecondaryButton(
                     label: "다시 촬영하기",
                     onPressed: () {

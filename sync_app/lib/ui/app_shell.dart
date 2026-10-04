@@ -37,6 +37,7 @@ class _AppShellState extends State<AppShell> {
       // IndexedStack: 탭을 바꿔도 이전 탭의 상태를 유지
       body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: NavigationBar(
+        indicatorColor: Colors.transparent,
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           setState(() {

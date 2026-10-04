@@ -1,8 +1,1 @@
-enum HomePhase {
-  setup,
-  sceneLoading,
-  songLoading,
-  playlistLoading,
-  playing,
-  error,
-}
+enum HomePhase { setup, playlist, playing }

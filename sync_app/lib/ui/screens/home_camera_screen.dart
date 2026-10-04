@@ -125,14 +125,24 @@ class _HomeCameraScreenState extends State<HomeCameraScreen> {
     //   buildCameraPageRoute<void>(HomeSelectImageScreen(imagePath: imagePath)),
     // );
 
-    // Fade Transition
-    await Navigator.of(context).push(
-      buildPhotoPreviewRoute<void>(HomeSelectImageScreen(imagePath: imagePath)),
-    );
+    // imagePath<String>를 보내기
+    final selectedImagePath =
+        // Fade Transition
+        await Navigator.of(context).push<String>(
+          buildPhotoPreviewRoute<String>(
+            HomeSelectImageScreen(imagePath: imagePath),
+          ),
+        );
 
     if (!mounted) return;
 
     _isOpeningCapturedImage = false;
+
+    if (selectedImagePath == null) {
+      return;
+    }
+
+    Navigator.of(context).pop<String>(selectedImagePath);
   }
 
   Future<void> _closeCamera() async {
