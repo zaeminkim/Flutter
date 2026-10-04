@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sync_app/services/meta_dat_service.dart';
-import 'package:sync_app/ui/routes/camera_page_route.dart';
+// import 'package:sync_app/ui/routes/camera_page_route.dart';
 import 'package:sync_app/ui/routes/select_image_page_route.dart';
 import 'package:sync_app/ui/screens/home_select_image_screen.dart';
 import 'package:sync_app/ui/widgets/camera_preview.dart';

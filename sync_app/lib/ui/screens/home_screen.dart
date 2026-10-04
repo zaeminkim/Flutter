@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sync_app/services/meta_dat_service.dart';
 import 'package:sync_app/ui/screens/home_camera_screen.dart';
-import 'package:sync_app/ui/widgets/primary_button.dart';
+// import 'package:sync_app/ui/widgets/primary_button.dart';
 
 import 'package:sync_app/ui/routes/camera_page_route.dart';
+
+import 'package:sync_app/ui/screens/home_phase.dart';
+import 'package:sync_app/ui/contents/home_setup_content.dart';
 
 // HomeScreen class (Widget): 화면을 나타내는 Widget 설정
 class HomeScreen extends StatefulWidget {
@@ -19,6 +22,8 @@ class HomeScreen extends StatefulWidget {
 
 // _HomeScreen class (State): 변하는 데이터와 실제 UI 관리
 class _HomeScreenState extends State<HomeScreen> {
+  HomePhase _phase = HomePhase.setup;
+
   // DAT 서비스 객체: Flutter가 Android Native DAT 코드와 통신
   final MetaDatService _datService = MetaDatService.instance;
 
@@ -184,29 +189,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return true;
   }
 
-  Widget _buildStepIndicator({required int number, required bool completed}) {
-    if (completed) {
-      return const Icon(
-        Icons.check_circle_sharp,
-        size: 28,
-        color: Color(0xFF6750A4),
-      );
-    }
-
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: const Color(0xFFE8E4EC),
-      child: Text(
-        '$number',
-        style: const TextStyle(
-          color: Colors.black,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _subscription?.cancel();
@@ -217,114 +199,37 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     // SafeArea: 콘텐츠가 휴대폰의 노치, 상태 표시줄, 카메라 홀, 제스처 바 등에 가려지지 않도록 자동으로 여백을 추가하는 위젯
     // -> 주로 Body에 사용함
-    return SafeArea(
-      // ListView: Column보다는 스크롤이 가능한 ListView 사용하기
-      child: ListView(
-        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 24),
-        children: [
-          Container(
-            height: 50,
-            decoration: BoxDecoration(
-              color: Color(0xFF49454F).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-            // Row: 자동 width 채우기 성질
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.bluetooth,
-                  color: !_isConnected ? Color(0xFF49454F) : Color(0xFF6750A4),
-                ),
-                const SizedBox(width: 8),
-                // Expanded: 자식위젯이 자동으로 남는 구간을 모두 차지함
-                Text(
-                  !_isConnected ? "기기가 연결되지 않았어요." : "Ray-Ban Meta",
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                // TextButton(
-                //   onPressed: () {
-                //     debugPrint("연결하기 버튼 클릭");
-                //   },
-                //   child: Text(
-                //     "연결하기",
-                //     style: TextStyle(color: Color(0xFF6750A4), fontSize: 14),
-                //   ),
-                // ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            "지금 보고 있는 장면에\n음악을 더해보세요.",
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "사진을 찍으면 싱크가 어울리는 음악을 찾아드려요.",
-            style: TextStyle(color: Color(0xFF8E8E93), fontSize: 14),
-          ),
-          const SizedBox(height: 48),
-          Row(
-            children: [
-              _buildStepIndicator(number: 1, completed: _isConnected),
-              SizedBox(width: 16),
-              Text(
-                '스마트글래스 연결하기',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _buildStepIndicator(
-                number: 2,
-                completed: _isConnected && _hasCameraPermission == true,
-              ),
-              SizedBox(width: 16),
-              Text(
-                '카메라 권한 허용하기',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _buildStepIndicator(number: 3, completed: false),
-              SizedBox(width: 16),
-              Text(
-                '사진 찍기',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          PrimaryButton(
-            label: _buttonLabel,
-            onPressed: _buttonEnabled
-                ? () {
-                    debugPrint("PrimaryButton 클릭");
-                    _handlePrimaryAction();
-                  }
-                : null,
-          ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
-            ),
-          ],
-        ],
-      ),
-    );
+    return SafeArea(child: _buildCurrentContent());
+  }
+
+  Widget _buildCurrentContent() {
+    switch (_phase) {
+      case HomePhase.setup:
+        return HomeSetupContent(
+          isConnected: _isConnected,
+          hasCameraPermission: _hasCameraPermission == true,
+          buttonLabel: _buttonLabel,
+          onPrimaryPressed: _buttonEnabled
+              ? () {
+                  _handlePrimaryAction();
+                }
+              : null,
+          errorMessage: _errorMessage,
+        );
+      case HomePhase.sceneLoading:
+        return const Center(child: Text('장면 분석 화면 준비 중'));
+
+      case HomePhase.songLoading:
+        return const Center(child: Text('음악 검색 화면 준비 중'));
+
+      case HomePhase.playlistLoading:
+        return const Center(child: Text('플레이리스트 준비 중'));
+
+      case HomePhase.playing:
+        return const Center(child: Text('재생 화면 준비 중'));
+
+      case HomePhase.error:
+        return Center(child: Text(_errorMessage ?? '오류가 발생했습니다.'));
+    }
   }
 }
