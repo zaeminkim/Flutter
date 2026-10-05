@@ -1,7 +1,7 @@
 import 'dart:io';
-// File()을 제공함
 
 import 'package:flutter/material.dart';
+import 'package:sync_app/models/sync_api_models.dart';
 import 'package:sync_app/ui/widgets/modal_bottom_sheet.dart';
 import 'package:sync_app/ui/widgets/primary_button.dart';
 import 'package:sync_app/ui/widgets/secondary_button.dart';
@@ -10,102 +10,159 @@ class HomePlaylistContent extends StatelessWidget {
   const HomePlaylistContent({
     super.key,
     required this.imagePath,
-    // 사진을 다시 찍었을 때, 그 사진으로 변경시키기 위함
+    required this.recommendation,
     required this.onRetakePressed,
-    required this.onPlayPressed,
+    required this.onSavePressed,
+    required this.isSaving,
+    this.errorMessage,
+    this.statusMessage,
   });
 
   final String imagePath;
+  final DirectRecommendation recommendation;
   final VoidCallback onRetakePressed;
-  final VoidCallback onPlayPressed;
+  final VoidCallback onSavePressed;
+  final bool isSaving;
+  final String? errorMessage;
+  final String? statusMessage;
+
+  Widget _playlistArtwork() {
+    final artworkUrl = recommendation.tracks.isEmpty
+        ? null
+        : recommendation.tracks.first.artworkUrl;
+    final fallback = Image.asset(
+      'assets/images/image_sample.png',
+      width: 70,
+      height: 70,
+      fit: BoxFit.cover,
+    );
+    if (artworkUrl == null) return fallback;
+
+    return Image.network(
+      artworkUrl,
+      width: 70,
+      height: 70,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallback,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
       children: [
         SizedBox(
-          // width: double.infinity = 부모가 허용하는 가로너비를 모두 사용함
           width: double.infinity,
           height: 284,
           child: ClipRRect(
-            borderRadius: BorderRadiusGeometry.circular(12),
+            borderRadius: BorderRadius.circular(12),
             child: RotatedBox(
               quarterTurns: 1,
-              // fit: BoxFit.cover = 이미지 비율을 유지하면서 지정한 영역을 빈틈없이 채움
               child: Image.file(File(imagePath), fit: BoxFit.cover),
             ),
           ),
         ),
-        SizedBox(height: 24),
-        Text("장면", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        SizedBox(height: 8),
-        Text("장면에 대한 키워드 및 분석 결과"),
-        SizedBox(height: 24),
-        Text(
-          "장면에 어울리는 플레이리스트",
+        const SizedBox(height: 24),
+        const Text(
+          '장면',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
-        SizedBox(height: 8),
-        // Material - Inkwell
-        // GestureDetector 대신 터치효과가 있는 Inkwell 사용함
-        // Material에서 색상, 모서리, 물결 효과 지정
+        const SizedBox(height: 8),
+        Text(recommendation.sceneDescription),
+        const SizedBox(height: 24),
+        const Text(
+          '장면에 어울리는 플레이리스트',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
         Material(
-          color: Color(0xFF49454F).withValues(alpha: 0.1),
+          color: const Color(0xFF49454F).withValues(alpha: 0.1),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () {
-              debugPrint("Playlist 클릭");
-              // ModalBottomSheet Widget을 화면에 띄우는 showModalBottomSheet() 함수
               showModalBottomSheet<void>(
                 context: context,
                 showDragHandle: true,
                 useSafeArea: true,
                 isScrollControlled: true,
-                builder: (sheetContext) {
-                  return ModalBottomSheet();
-                },
+                builder: (_) =>
+                    ModalBottomSheet(recommendation: recommendation),
               );
             },
-            child: Container(
+            child: SizedBox(
               height: 92,
-              padding: EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                children: [
-                  Image.asset('assets/images/image_sample.png', height: 70),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Playlist name",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text("Generated Date"),
-                      ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: _playlistArtwork(),
                     ),
-                  ),
-                  Icon(Icons.chevron_right),
-                ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            recommendation.playlistTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text('${recommendation.tracks.length}곡'),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-        SizedBox(height: 32),
-        PrimaryButton(label: "Youtube Music에서 재생하기", onPressed: onPlayPressed),
-        SizedBox(height: 8),
+        if (recommendation.partial) ...[
+          const SizedBox(height: 12),
+          Text(
+            '검증된 곡 ${recommendation.tracks.length}/${recommendation.targetTrackCount}곡을 찾았어요. 찾은 곡은 그대로 저장할 수 있습니다.',
+            style: const TextStyle(color: Color(0xFF6F6676), fontSize: 13),
+          ),
+        ],
+        if (errorMessage != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            errorMessage!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.red),
+          ),
+        ],
+        if (statusMessage != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            statusMessage!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF6750A4)),
+          ),
+        ],
+        const SizedBox(height: 32),
+        PrimaryButton(
+          label: isSaving ? 'YouTube Music에 저장 중...' : 'YouTube Music에 저장',
+          onPressed: isSaving || recommendation.tracks.isEmpty
+              ? null
+              : onSavePressed,
+        ),
+        const SizedBox(height: 8),
         SecondaryButton(
-          label: "장면 다시 촬영하기",
-          // 직접 Navigator를 호출하지 않고 콜백을 호출함
-          onPressed: onRetakePressed,
+          label: '장면 다시 촬영하기',
+          onPressed: isSaving ? null : onRetakePressed,
         ),
       ],
     );

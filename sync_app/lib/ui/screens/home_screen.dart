@@ -1,106 +1,95 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sync_app/models/sync_api_models.dart';
 import 'package:sync_app/services/meta_dat_service.dart';
+import 'package:sync_app/services/sync_api_service.dart';
+import 'package:sync_app/services/sync_auth_service.dart';
+import 'package:sync_app/ui/contents/home_analysis_error_content.dart';
+import 'package:sync_app/ui/contents/home_analyzing_content.dart';
 import 'package:sync_app/ui/contents/home_playing_content.dart';
 import 'package:sync_app/ui/contents/home_playlist_content.dart';
-import 'package:sync_app/ui/screens/home_camera_screen.dart';
-// import 'package:sync_app/ui/widgets/primary_button.dart';
-
-import 'package:sync_app/ui/routes/camera_page_route.dart';
-
-import 'package:sync_app/ui/screens/home_phase.dart';
 import 'package:sync_app/ui/contents/home_setup_content.dart';
+import 'package:sync_app/ui/routes/camera_page_route.dart';
+import 'package:sync_app/ui/screens/home_camera_screen.dart';
+import 'package:sync_app/ui/screens/home_phase.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-// HomeScreen class (Widget): 화면을 나타내는 Widget 설정
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  // CreateState(): HomeScreen을 화면에 표시할 때, _HomeScreenState이라는 상태객체를 만들어서 사용해라
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-// _HomeScreen class (State): 변하는 데이터와 실제 UI 관리
 class _HomeScreenState extends State<HomeScreen> {
-  // ignore: prefer_final_fields
-  HomePhase _phase = HomePhase.setup;
-  void _showPlayingContent() {
-    setState(() {
-      _phase = HomePhase.playing;
-    });
-  }
-
-  // DAT 서비스 객체: Flutter가 Android Native DAT 코드와 통신
   final MetaDatService _datService = MetaDatService.instance;
+  final SyncApiService _api = SyncApiService();
+  final AppLinks _appLinks = AppLinks();
 
-  // 이벤트 구독 객체(_subscription): DAT에서 들어오는 이벤트를 계속 듣기 위한 객체(Stream)
-  // 'type': 'registration', 'state': 'REGISTERED', ...
-  StreamSubscription<Map<String, dynamic>>? _subscription;
+  late final SyncAuthService _auth = SyncAuthService(api: _api);
+  StreamSubscription<Map<String, dynamic>>? _datSubscription;
+  StreamSubscription<Uri>? _appLinkSubscription;
 
-  // _registrationState: 등록상태
+  HomePhase _phase = HomePhase.setup;
   String _registrationState = 'AVAILABLE';
-  // _hasActiveDevice: 활성 기기 존재여부
   bool _hasActiveDevice = false;
-  // _hasCameraPermission: 카메라 권한 상태
   bool? _hasCameraPermission;
-  // _isRequestingCameraPermission: 카메라 권한 요청 진행여부
   bool _isRequestingCameraPermission = false;
-  // _errorMessage: 에러 메시지
+  bool _isSavingPlaylist = false;
+  bool _pendingPlaylistSave = false;
   String? _errorMessage;
-
-  // 촬영한 이미지 경로를 저장하는 변수
+  String? _playlistStatusMessage;
   String? _capturedImagePath;
+  DirectRecommendation? _recommendation;
+  CreatedPlaylist? _createdPlaylist;
 
-  // _isRegistering: getter함수
   bool get _isRegistering => _registrationState == 'REGISTERING';
-  // _isConnected
   bool get _isConnected =>
       _registrationState == 'REGISTERED' && _hasActiveDevice;
 
   @override
-  // initState()는 State 객체가 처음 생성될 때 최초 한 번만 실행됨
-  // initState()에서 이벤트 듣기
   void initState() {
     super.initState();
-
-    _subscription = _datService.events.listen(
+    _datSubscription = _datService.events.listen(
       _handleDatEvent,
       onError: (Object error) {
         if (!mounted) return;
-
         setState(() {
           _isRequestingCameraPermission = false;
           _errorMessage = error.toString();
         });
       },
     );
+    _appLinkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) => unawaited(_handleAppLink(uri)),
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() {
+          _isSavingPlaylist = false;
+          _errorMessage = '로그인 완료 링크를 처리하지 못했습니다.';
+        });
+      },
+    );
   }
 
-  // _handleDatEvent: DAT 이벤트 처리 함수
   void _handleDatEvent(Map<String, dynamic> event) {
-    // mounted: 이 State가 현재 화면 트리에 붙어 있는지 확인
-    // !mounted = 화면이 존재하지 않는다
     if (!mounted) return;
 
     switch (event['type']) {
       case 'registration':
-        // setState() 안에서 상태값을 바꾸면 Flutter가 build()를 다시 실행함
         setState(() {
-          // .. as String? = ..을 String 혹은 null로 취급해라
-          // A ?? B = A가 null이면 B 사용, A가 null이 아니면 A 사용
           _registrationState = event['state'] as String? ?? 'AVAILABLE';
           _errorMessage = null;
         });
         break;
-
       case 'device':
         setState(() {
           _hasActiveDevice = event['hasActiveDevice'] as bool? ?? false;
         });
         break;
-
       case 'CAMERA_PERMISSION':
         setState(() {
           _isRequestingCameraPermission = false;
@@ -108,7 +97,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _errorMessage = event['message'] as String?;
         });
         break;
-
       case 'error':
         setState(() {
           _isRequestingCameraPermission = false;
@@ -118,113 +106,254 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // HomeCameraScreen()으로 이동 -> PageRouteBuilder 사용
   Future<void> _openCameraScreen() async {
-    // imagePath<String>를 보내기
-    final imagePath =
-        // AppShell에 별도의 내부 Navigator가 없기 때문에
-        // appBar와 bottomNavigationBar를 덮는 전체 화면 route가 열림
-        await Navigator.of(
-          context,
-        ).push<String>(buildCameraPageRoute<String>(const HomeCameraScreen()));
+    final imagePath = await Navigator.of(
+      context,
+    ).push<String>(buildCameraPageRoute<String>(const HomeCameraScreen()));
 
     if (!mounted || imagePath == null) return;
-
-    setState(() {
-      _capturedImagePath = imagePath;
-      _phase = HomePhase.playlist;
-    });
+    await _analyzeImage(imagePath);
   }
 
-  // _handlePrimaryAction: PrimaryButton 클릭 함수
-  // Future: 결과가 나중에 완료됨, async/await: 비동기 함수
-  Future<void> _handlePrimaryAction() async {
+  Future<void> _analyzeImage(String imagePath) async {
     setState(() {
+      _capturedImagePath = imagePath;
+      _recommendation = null;
+      _createdPlaylist = null;
       _errorMessage = null;
+      _playlistStatusMessage = null;
+      _phase = HomePhase.analyzing;
     });
+
+    try {
+      final result = await _api.recommendDirect(
+        imagePath,
+        requestId: 'android_${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (!mounted) return;
+      setState(() {
+        _recommendation = result;
+        _phase = HomePhase.playlist;
+      });
+    } on SyncApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = _friendlyApiMessage(error);
+        _phase = HomePhase.analysisError;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = '추천 요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.';
+        _phase = HomePhase.analysisError;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = '서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.';
+        _phase = HomePhase.analysisError;
+      });
+    }
+  }
+
+  Future<void> _handlePrimaryAction() async {
+    setState(() => _errorMessage = null);
 
     try {
       if (!_isConnected) {
         await _datService.startRegistration();
         return;
       }
-
       if (_hasCameraPermission != true) {
-        setState(() {
-          _isRequestingCameraPermission = true;
-        });
-
+        setState(() => _isRequestingCameraPermission = true);
         await _datService.requestCameraPermission();
         return;
       }
-
       await _openCameraScreen();
     } on PlatformException catch (error) {
       if (!mounted) return;
-
       setState(() {
         _isRequestingCameraPermission = false;
-        _errorMessage = error.message ?? "요청을 처리하지 못했습니다.";
+        _errorMessage = error.message ?? '요청을 처리하지 못했습니다.';
       });
     }
   }
 
-  String get _buttonLabel {
-    if (_isRegistering) {
-      return '스마트글래스 연결 중...';
+  Future<void> _savePlaylist() async {
+    final recommendation = _recommendation;
+    if (recommendation == null || _isSavingPlaylist) return;
+
+    setState(() {
+      _isSavingPlaylist = true;
+      _errorMessage = null;
+      _playlistStatusMessage = null;
+    });
+
+    try {
+      final token = await _auth.readValidSessionToken();
+      if (token == null) {
+        await _startGoogleConnection();
+        return;
+      }
+
+      final status = await _api.getGoogleStatus(token);
+      if (!status.connected) {
+        await _auth.clearSession();
+        await _startGoogleConnection();
+        return;
+      }
+      await _createPlaylist(token);
+    } on SyncApiException catch (error) {
+      if (error.isAuthenticationError) {
+        await _auth.clearSession();
+        await _startGoogleConnection();
+        return;
+      }
+      _showPlaylistError(_friendlyApiMessage(error));
+    } on TimeoutException {
+      _showPlaylistError('요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+    } catch (_) {
+      _showPlaylistError('서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.');
+    }
+  }
+
+  Future<void> _startGoogleConnection() async {
+    _pendingPlaylistSave = true;
+    try {
+      await _auth.beginGoogleConnection();
+      if (!mounted) return;
+      setState(() {
+        _isSavingPlaylist = false;
+        _playlistStatusMessage = '브라우저에서 Google 로그인을 완료하면 자동으로 저장됩니다.';
+      });
+    } on SyncApiException catch (error) {
+      _pendingPlaylistSave = false;
+      _showPlaylistError(_friendlyApiMessage(error));
+    } catch (_) {
+      _pendingPlaylistSave = false;
+      _showPlaylistError('Google 로그인 화면을 열지 못했습니다.');
+    }
+  }
+
+  Future<void> _handleAppLink(Uri uri) async {
+    if (uri.host != 'sync-backend-c2lv.onrender.com' ||
+        uri.path != '/auth/android/complete') {
+      return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isSavingPlaylist = true;
+        _errorMessage = null;
+        _playlistStatusMessage = 'Google 연결을 확인하고 있어요.';
+      });
+    }
+
+    try {
+      final session = await _auth.completeGoogleConnection(uri);
+      if (!mounted) return;
+
+      if (_pendingPlaylistSave && _recommendation != null) {
+        _pendingPlaylistSave = false;
+        await _createPlaylist(session.sessionToken);
+      } else {
+        setState(() {
+          _isSavingPlaylist = false;
+          _playlistStatusMessage = 'Google 계정이 연결되었습니다.';
+        });
+      }
+    } on SyncApiException catch (error) {
+      _pendingPlaylistSave = false;
+      _showPlaylistError(_friendlyApiMessage(error));
+    } catch (_) {
+      _pendingPlaylistSave = false;
+      _showPlaylistError('로그인 완료 정보를 처리하지 못했습니다.');
+    }
+  }
+
+  Future<void> _createPlaylist(String token) async {
+    final recommendation = _recommendation!;
+    final created = await _api.createPlaylist(
+      sessionToken: token,
+      recommendationId: recommendation.recommendationId,
+      title: recommendation.playlistTitle,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _createdPlaylist = created;
+      _isSavingPlaylist = false;
+      _playlistStatusMessage = null;
+      _phase = HomePhase.playing;
+    });
+
+    await launchUrl(
+      created.youtubeMusicUrl,
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
+  void _showPlaylistError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _isSavingPlaylist = false;
+      _playlistStatusMessage = null;
+      _errorMessage = message;
+    });
+  }
+
+  String _friendlyApiMessage(SyncApiException error) {
+    switch (error.code) {
+      case 'DIRECT_RECOMMENDATION_UNAVAILABLE':
+        return '서버의 추천 기능이 아직 활성화되지 않았습니다. 백엔드 설정을 확인해 주세요.';
+      case 'IMAGE_TOO_LARGE':
+        return '이미지 크기는 10MB 이하여야 합니다.';
+      case 'UNSUPPORTED_IMAGE_TYPE':
+      case 'UNSUPPORTED_CONTENT_TYPE':
+        return 'JPEG, PNG 또는 WebP 이미지만 사용할 수 있습니다.';
+      case 'RECOMMENDATION_EXPIRED':
+      case 'RECOMMENDATION_NOT_FOUND':
+        return '추천 정보가 만료되었습니다. 사진을 다시 분석해 주세요.';
+      case 'NO_VERIFIED_TRACKS':
+        return '저장할 수 있는 검증된 추천곡이 없습니다.';
+      case 'MOBILE_AUTH_UNAVAILABLE':
+        return '서버의 모바일 Google 로그인이 아직 설정되지 않았습니다.';
+      case 'YOUTUBE_QUOTA_EXCEEDED':
+        return 'YouTube 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.';
+      default:
+        return error.message;
+    }
+  }
+
+  String get _buttonLabel {
+    if (_isRegistering) return '스마트글래스 연결 중...';
     if (_registrationState == 'REGISTERED' && !_hasActiveDevice) {
       return '스마트글래스 확인 중...';
     }
-
-    if (!_isConnected) {
-      return '스마트글래스 연결하기';
-    }
-
-    if (_hasCameraPermission == null) {
-      return '카메라 권한 확인 중...';
-    }
-
+    if (!_isConnected) return '스마트글래스 연결하기';
+    if (_hasCameraPermission == null) return '카메라 권한 확인 중...';
     if (_hasCameraPermission == false) {
       return _isRequestingCameraPermission ? '카메라 권한 요청 중...' : '카메라 권한 허용하기';
     }
-
     return '사진 찍기';
   }
 
   bool get _buttonEnabled {
-    if (_isRegistering || _isRequestingCameraPermission) {
-      return false;
-    }
-
-    if (_registrationState == 'REGISTERED' && !_hasActiveDevice) {
-      return false;
-    }
-
-    if (_isConnected && _hasCameraPermission == null) {
-      return false;
-    }
-
+    if (_isRegistering || _isRequestingCameraPermission) return false;
+    if (_registrationState == 'REGISTERED' && !_hasActiveDevice) return false;
+    if (_isConnected && _hasCameraPermission == null) return false;
     return true;
-  }
-
-  void _showPlaylistContent() {
-    setState(() {
-      _phase = HomePhase.playlist;
-    });
   }
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _datSubscription?.cancel();
+    _appLinkSubscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // SafeArea: 콘텐츠가 휴대폰의 노치, 상태 표시줄, 카메라 홀, 제스처 바 등에 가려지지 않도록 자동으로 여백을 추가하는 위젯
-    // -> 주로 Body에 사용함
     return SafeArea(child: _buildCurrentContent());
   }
 
@@ -236,32 +365,44 @@ class _HomeScreenState extends State<HomeScreen> {
           hasCameraPermission: _hasCameraPermission == true,
           buttonLabel: _buttonLabel,
           onPrimaryPressed: _buttonEnabled
-              ? () {
-                  _handlePrimaryAction();
-                }
+              ? () => unawaited(_handlePrimaryAction())
               : null,
           errorMessage: _errorMessage,
         );
-
+      case HomePhase.analyzing:
+        return HomeAnalyzingContent(imagePath: _capturedImagePath!);
+      case HomePhase.analysisError:
+        return HomeAnalysisErrorContent(
+          imagePath: _capturedImagePath!,
+          message: _errorMessage ?? '분석하지 못했습니다.',
+          onRetryPressed: () => unawaited(_analyzeImage(_capturedImagePath!)),
+          onRetakePressed: () => unawaited(_openCameraScreen()),
+        );
       case HomePhase.playlist:
         return HomePlaylistContent(
           imagePath: _capturedImagePath!,
-          // 새 경로를 받아서 상태를 변경하는 _openCameraScreen()을 콜백함수에 전달함
-          onRetakePressed: () {
-            unawaited(_openCameraScreen());
-          },
-          onPlayPressed: _showPlayingContent,
+          recommendation: _recommendation!,
+          onRetakePressed: () => unawaited(_openCameraScreen()),
+          onSavePressed: () => unawaited(_savePlaylist()),
+          isSaving: _isSavingPlaylist,
+          errorMessage: _errorMessage,
+          statusMessage: _playlistStatusMessage,
         );
-
       case HomePhase.playing:
         return HomePlayingContent(
           isConnected: _isConnected,
           imagePath: _capturedImagePath!,
-
-          onRetakePressed: () {
-            unawaited(_openCameraScreen());
-          },
-          onRecommendAgainPressed: _showPlaylistContent,
+          recommendation: _recommendation!,
+          playlist: _createdPlaylist!,
+          onRetakePressed: () => unawaited(_openCameraScreen()),
+          onRecommendAgainPressed: () =>
+              unawaited(_analyzeImage(_capturedImagePath!)),
+          onOpenYoutubeMusic: () => unawaited(
+            launchUrl(
+              _createdPlaylist!.youtubeMusicUrl,
+              mode: LaunchMode.externalApplication,
+            ),
+          ),
         );
     }
   }

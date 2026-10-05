@@ -1,1 +1,1 @@
-enum HomePhase { setup, playlist, playing }
+enum HomePhase { setup, analyzing, analysisError, playlist, playing }
